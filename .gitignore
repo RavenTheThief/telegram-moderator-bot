@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Node / React
+node_modules/
+dist/
+build/
+.npm
+*.log
+
+# Databases & Local Redis
+*.sqlite3
+*.db
+pgdata/
+redisdata/
+
+# Environment variables
+.env
+!.env.example
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
