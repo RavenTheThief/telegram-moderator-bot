@@ -55,6 +55,7 @@ class ChatSettings(Base):
     max_warns: Mapped[int] = mapped_column(Integer, default=3)
     warns_punishment: Mapped[str] = mapped_column(String(50), default="mute")  # 'mute' or 'ban'
     warns_mute_duration_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    warn_expire_hours: Mapped[int] = mapped_column(Integer, default=24)  # 0 = disabled, default 24 hours
 
     # Protection & Limits
     anti_caps_enabled: Mapped[bool] = mapped_column(Boolean, default=False)

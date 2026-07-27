@@ -44,6 +44,7 @@ class ChatSettingsBase(BaseModel):
     max_warns: int = 3
     warns_punishment: str = "mute"
     warns_mute_duration_minutes: int = 60
+    warn_expire_hours: int = 24  # 0 = disabled, default 24 hours
 
     # Protection & Limits
     anti_caps_enabled: bool = False

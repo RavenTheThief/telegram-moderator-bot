@@ -10,9 +10,19 @@ from bot.middlewares.anti_flood import AntiFloodMiddleware
 from bot.middlewares.moderation_filter import ModerationFilterMiddleware
 from bot.handlers import captcha, events
 from bot.services.redis_service import redis_service
+from bot.services.db_service import db_service
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
+
+async def start_warn_expiration_background_worker():
+    logger.info("Starting Warn Expiration Background Worker...")
+    while True:
+        try:
+            await asyncio.sleep(60)
+            await db_service.expire_old_warns()
+        except Exception as e:
+            logger.error(f"Error in warn expiration worker: {e}")
 
 async def main():
     logger.info("Starting Telegram Moderator Bot...")
@@ -46,6 +56,8 @@ async def main():
     asyncio.create_task(captcha.start_captcha_background_worker(bot))
     # 2. Redis Pub/Sub listener for real-time Web Panel settings invalidation
     asyncio.create_task(redis_service.start_pubsub_listener())
+    # 3. Warn expiration scanner worker (runs every 60s)
+    asyncio.create_task(start_warn_expiration_background_worker())
 
     logger.info("Bot starting polling loop...")
     try:

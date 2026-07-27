@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import select, delete, func
@@ -48,7 +48,6 @@ class DBService:
 
     @staticmethod
     async def get_chat_settings(chat_id: int) -> Optional[ChatSettings]:
-        # 1. Try Redis cache first
         cached = await redis_service.get_cached_settings(chat_id)
         if cached:
             s = ChatSettings()
@@ -56,7 +55,6 @@ class DBService:
                 setattr(s, k, v)
             return s
 
-        # 2. Database fallback
         async with AsyncSessionMaker() as session:
             result = await session.execute(select(ChatSettings).where(ChatSettings.chat_id == chat_id))
             cs = result.scalar_one_or_none()
@@ -165,6 +163,31 @@ class DBService:
                 await session.commit()
             except Exception as e:
                 logger.error(f"Failed to clear warns for user {user_id}: {e}")
+                await session.rollback()
+
+    @staticmethod
+    async def expire_old_warns():
+        async with AsyncSessionMaker() as session:
+            try:
+                result = await session.execute(
+                    select(ChatSettings).where(ChatSettings.warn_expire_hours > 0)
+                )
+                settings_list = result.scalars().all()
+
+                for s in settings_list:
+                    cutoff = datetime.utcnow() - timedelta(hours=s.warn_expire_hours)
+                    res = await session.execute(
+                        delete(Warn).where(
+                            Warn.chat_id == s.chat_id,
+                            Warn.created_at < cutoff
+                        )
+                    )
+                    deleted_count = res.rowcount
+                    if deleted_count > 0:
+                        logger.info(f"Expired {deleted_count} old warns for chat_id={s.chat_id} (cutoff <= {cutoff})")
+                await session.commit()
+            except Exception as e:
+                logger.error(f"Error expiring old warns: {e}")
                 await session.rollback()
 
 db_service = DBService()
