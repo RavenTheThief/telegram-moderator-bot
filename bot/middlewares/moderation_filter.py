@@ -55,9 +55,10 @@ class ModerationFilterMiddleware(BaseMiddleware):
             try:
                 member = await bot.get_chat_member(chat_id, user_id)
                 if member.status in ["administrator", "creator"]:
+                    logger.info(f"User {user_id} ({event.from_user.full_name}) is admin/creator in chat {chat_id}. Bypassing moderation filters.")
                     return await handler(event, data)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Failed to check admin status for user {user_id}: {e}")
 
         settings = await db_service.get_chat_settings(chat_id)
         if not settings:
@@ -100,12 +101,10 @@ class ModerationFilterMiddleware(BaseMiddleware):
         if not violation_reason and settings.filter_links:
             extracted_urls = []
 
-            # Extract URLs from raw text/caption via regex
             if text:
                 url_pattern = r'(https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*)'
                 extracted_urls.extend(re.findall(url_pattern, text))
 
-            # Extract URLs from Telegram message entities (e.g. formatted markdown text links)
             entities = (event.entities or []) + (event.caption_entities or [])
             for entity in entities:
                 if entity.type == "url" and text:
@@ -134,17 +133,21 @@ class ModerationFilterMiddleware(BaseMiddleware):
         # 5. Stop-Words Filter (Checked independently)
         if not violation_reason and text:
             stop_words = await db_service.get_stop_words(chat_id)
+            logger.info(f"Chat {chat_id}: Checking {len(stop_words)} stop-words against text: '{text}'")
             for sw in stop_words:
+                logger.info(f"Comparing stop-word '{sw.word}' (is_regex={sw.is_regex}) with text '{text}'")
                 if sw.is_regex:
                     try:
                         if re.search(sw.word, text, re.IGNORECASE):
                             violation_reason = f"Стоп-слово (Regex: {sw.word})"
+                            logger.info(f"Violation matched regex stop-word '{sw.word}'!")
                             break
                     except Exception as e:
                         logger.error(f"Error executing regex stop-word '{sw.word}': {e}")
                 else:
                     if sw.word.lower() in text.lower():
                         violation_reason = f"Стоп-слово ({sw.word})"
+                        logger.info(f"Violation matched stop-word '{sw.word}'!")
                         break
 
         # 6. Anti-Caps Filter
@@ -158,10 +161,11 @@ class ModerationFilterMiddleware(BaseMiddleware):
 
         # Process Violation if triggered
         if violation_reason:
+            logger.info(f"Applying violation penalty for user {user_id} in chat {chat_id}: reason='{violation_reason}'")
             try:
                 await event.delete()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Failed to delete violation message: {e}")
 
             user_fullname = event.from_user.full_name
             await db_service.log_action(
@@ -195,8 +199,8 @@ class ModerationFilterMiddleware(BaseMiddleware):
                             details=f"Последнее нарушение: {violation_reason}"
                         )
                         msg = await event.answer(f"🚫 <b>{user_fullname}</b> забанен! Достигнут лимит варнов ({settings.max_warns}).")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.error(f"Failed to ban user {user_id}: {e}")
                 else:  # Mute
                     mute_until = datetime.utcnow() + timedelta(minutes=settings.warns_mute_duration_minutes)
                     try:
@@ -215,8 +219,8 @@ class ModerationFilterMiddleware(BaseMiddleware):
                             details=f"Мут на {settings.warns_mute_duration_minutes} мин. Последнее нарушение: {violation_reason}"
                         )
                         msg = await event.answer(f"🤐 <b>{user_fullname}</b> замучен на {settings.warns_mute_duration_minutes} мин! Достигнут лимит варнов ({settings.max_warns}).")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.error(f"Failed to mute user {user_id}: {e}")
             else:
                 msg = await event.answer(
                     f"⚠️ <b>{user_fullname}</b>, ваше сообщение удалено.\n"

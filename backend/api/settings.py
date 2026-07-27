@@ -1,3 +1,4 @@
+import logging
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,7 @@ from backend.core.redis import backend_redis
 from backend.models.models import ChatSettings, StopWord, Chat
 from backend.schemas.schemas import ChatSettingsResponse, ChatSettingsUpdate, StopWordResponse, StopWordCreate
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chats/{chat_id}", tags=["Settings & Filters"])
 
 @router.get("/settings", response_model=ChatSettingsResponse)
@@ -58,7 +60,7 @@ async def update_chat_settings(
     try:
         await backend_redis.invalidate_chat_cache(chat_id)
     except Exception as e:
-        pass
+        logger.error(f"Error invalidating chat cache for {chat_id}: {e}")
 
     return settings
 
@@ -94,7 +96,7 @@ async def add_stop_word(
     try:
         await backend_redis.invalidate_chat_cache(chat_id)
     except Exception as e:
-        pass
+        logger.error(f"Error invalidating chat cache for {chat_id}: {e}")
 
     return stop_word
 
@@ -114,6 +116,6 @@ async def delete_stop_word(
     try:
         await backend_redis.invalidate_chat_cache(chat_id)
     except Exception as e:
-        pass
+        logger.error(f"Error invalidating chat cache for {chat_id}: {e}")
 
     return {"status": "success", "message": "Стоп-слово удалено"}
