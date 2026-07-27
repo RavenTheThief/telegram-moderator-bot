@@ -78,7 +78,7 @@ services:
     container_name: moderator_frontend
     restart: always
     ports:
-      - "8080:443"
+      - "${FRONTEND_PORT:-8081}:443"
       - "3000:80"
     volumes:
       - ./certs:/etc/nginx/certs:ro
