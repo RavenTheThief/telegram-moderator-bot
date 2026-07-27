@@ -28,11 +28,13 @@ async def main():
     dp.message.outer_middleware(ChatTypeMiddleware())
     dp.callback_query.outer_middleware(ChatTypeMiddleware())
 
-    # 2. Inner Middlewares for Content Moderation & Rate-Limiting
-    dp.message.middleware(AntiFloodMiddleware())
-    dp.message.middleware(ModerationFilterMiddleware())
+    # 2. Outer Middleware: Content Moderation & Auto Chat Registration for all group updates
+    dp.message.outer_middleware(ModerationFilterMiddleware())
 
-    # 3. Include Handlers
+    # 3. Inner Middleware for Rate Limiting
+    dp.message.middleware(AntiFloodMiddleware())
+
+    # 4. Include Handlers
     dp.include_router(captcha.router)
     dp.include_router(events.router)
 

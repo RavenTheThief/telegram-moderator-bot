@@ -1,7 +1,6 @@
 import asyncio
 from aiogram import Router, F, Bot
 from aiogram.types import Message, ChatMemberUpdated
-from aiogram.filters import CommandStart, Command
 from aiogram.filters.chat_member_updated import ChatMemberUpdatedFilter, KICKED, LEFT, RESTRICTED, MEMBER, ADMINISTRATOR
 
 from bot.services.db_service import db_service
@@ -27,7 +26,18 @@ async def on_bot_status_changed(event: ChatMemberUpdated):
     if event.new_chat_member.status in ["administrator", "member"]:
         await db_service.get_or_create_chat(
             chat_id=chat.id,
-            title=chat.title or "Unassigned Group",
+            title=chat.title or f"Группа ({chat.id})",
             username=chat.username,
             chat_type=chat.type
         )
+
+# Catch-all handler for any message in group chats to guarantee registration in DB
+@router.message(F.chat.type.in_({"group", "supergroup"}))
+async def on_group_message_event(message: Message):
+    chat_id = message.chat.id
+    await db_service.get_or_create_chat(
+        chat_id=chat_id,
+        title=message.chat.title or f"Группа ({chat_id})",
+        username=message.chat.username,
+        chat_type=message.chat.type
+    )
