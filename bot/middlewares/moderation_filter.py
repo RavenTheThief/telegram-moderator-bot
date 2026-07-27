@@ -20,7 +20,15 @@ class ModerationFilterMiddleware(BaseMiddleware):
         user_id = event.from_user.id
         bot = data.get("bot")
 
-        # Update or register user info in DB
+        # 1. Ensure chat & default settings are auto-registered in DB
+        await db_service.get_or_create_chat(
+            chat_id=chat_id,
+            title=event.chat.title or f"Группа ({chat_id})",
+            username=event.chat.username,
+            chat_type=event.chat.type
+        )
+
+        # 2. Update or register user info in DB
         await db_service.upsert_user(
             chat_id=chat_id,
             user_id=user_id,
@@ -30,7 +38,7 @@ class ModerationFilterMiddleware(BaseMiddleware):
             is_bot=event.from_user.is_bot
         )
 
-        # Skip checks for chat admins
+        # Skip moderation checks for chat administrators & group creators
         if bot:
             try:
                 member = await bot.get_chat_member(chat_id, user_id)
@@ -72,7 +80,6 @@ class ModerationFilterMiddleware(BaseMiddleware):
 
         # 4. Link & Domain Whitelist Filter
         elif settings.filter_links and text:
-            # Match URLs, http, https, t.me, etc.
             url_pattern = r'(https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*)'
             urls = re.findall(url_pattern, text)
             if urls:
@@ -82,11 +89,9 @@ class ModerationFilterMiddleware(BaseMiddleware):
                     try:
                         parsed = urllib.parse.urlparse(clean_url)
                         domain = parsed.netloc.lower().split(":")[0]
-                        # Remove www.
                         if domain.startswith("www."):
                             domain = domain[4:]
                         
-                        # Check if domain or top-level matches any allowed domain
                         is_allowed = any(domain == allowed or domain.endswith("." + allowed) for allowed in allowed_domains)
                         if not is_allowed:
                             violation_reason = f"Запрещенная ссылка ({domain})"
