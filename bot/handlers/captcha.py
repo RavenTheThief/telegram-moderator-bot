@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from aiogram import Router, F, Bot
 from aiogram.types import Message, ChatMemberUpdated, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ChatPermissions
-from aiogram.filters.chat_member_updated import ChatMemberUpdatedFilter, JOINED
+from aiogram.filters.chat_member_updated import ChatMemberUpdatedFilter, JOIN_TRANSITION
 
 from bot.services.db_service import db_service
 from bot.services.redis_service import redis_service
@@ -35,20 +35,17 @@ async def start_captcha_background_worker(bot: Bot):
 
                 logger.info(f"Captcha expired for user {user_id} in chat {chat_id}. Applying action...")
 
-                # Delete Redis keys immediately so it's not processed twice
                 await redis_service.delete_captcha(chat_id, user_id)
 
                 settings = await db_service.get_chat_settings(chat_id)
                 action = settings.captcha_fail_action.lower() if settings else "kick"
 
-                # Delete captcha message
                 if message_id:
                     try:
                         await bot.delete_message(chat_id, message_id)
                     except Exception:
                         pass
 
-                # Apply Punishment
                 if action == "ban":
                     try:
                         await bot.ban_chat_member(chat_id, user_id)
@@ -64,7 +61,7 @@ async def start_captcha_background_worker(bot: Bot):
                 else:  # Kick
                     try:
                         await bot.ban_chat_member(chat_id, user_id)
-                        await bot.unban_chat_member(chat_id, user_id)  # Kick and unban so they can retry
+                        await bot.unban_chat_member(chat_id, user_id)
                         await db_service.log_action(
                             chat_id=chat_id,
                             user_id=user_id,
@@ -78,7 +75,7 @@ async def start_captcha_background_worker(bot: Bot):
         except Exception as e:
             logger.error(f"Error in captcha background worker: {e}")
 
-@router.chat_member(ChatMemberUpdatedFilter(member_status_changed=JOINED))
+@router.chat_member(ChatMemberUpdatedFilter(member_status_changed=JOIN_TRANSITION))
 async def on_user_join(event: ChatMemberUpdated, bot: Bot):
     chat_id = event.chat.id
     new_user = event.new_chat_member.user
