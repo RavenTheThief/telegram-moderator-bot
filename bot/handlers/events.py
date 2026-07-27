@@ -1,11 +1,28 @@
 import asyncio
 from aiogram import Router, F, Bot
 from aiogram.types import Message, ChatMemberUpdated
+from aiogram.filters import CommandStart, Command
 from aiogram.filters.chat_member_updated import ChatMemberUpdatedFilter, KICKED, LEFT, RESTRICTED, MEMBER, ADMINISTRATOR
 
 from bot.services.db_service import db_service
 
 router = Router(name="events_router")
+
+@router.message(CommandStart())
+@router.message(Command("start", "help", "chatid", "status"))
+async def on_start_command(message: Message):
+    if message.chat and message.chat.type in ["group", "supergroup"]:
+        chat = await db_service.get_or_create_chat(
+            chat_id=message.chat.id,
+            title=message.chat.title or f"Группа ({message.chat.id})",
+            username=message.chat.username,
+            chat_type=message.chat.type
+        )
+        await message.reply(
+            f"🛡️ <b>Модератор активирован в чате \"{chat.title}\"!</b>\n\n"
+            f"🆔 ID Чата: <code>{message.chat.id}</code>\n"
+            f"🌐 Панель управления: https://rostovskiyperec.ru:8081"
+        )
 
 @router.message(F.new_chat_members)
 @router.message(F.left_chat_member)
