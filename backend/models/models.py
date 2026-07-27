@@ -87,7 +87,13 @@ class User(Base):
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     chat: Mapped["Chat"] = relationship("Chat", back_populates="users")
-    warns: Mapped[list["Warn"]] = relationship("Warn", back_populates="user", cascade="all, delete-orphan")
+    warns: Mapped[list["Warn"]] = relationship(
+        "Warn",
+        primaryjoin="and_(User.id==Warn.user_id, User.chat_id==Warn.chat_id)",
+        foreign_keys="[Warn.user_id, Warn.chat_id]",
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
 
 
 class Warn(Base):
