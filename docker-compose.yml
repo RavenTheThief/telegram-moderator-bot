@@ -81,7 +81,7 @@ services:
       - "${FRONTEND_PORT:-8081}:443"
       - "3000:80"
     volumes:
-      - ./certs:/etc/nginx/certs:ro
+      - ${SSL_CERTS_DIR:-/root/cert/rostovskiyperec.ru}:/etc/nginx/certs:ro
     depends_on:
       - backend
 
