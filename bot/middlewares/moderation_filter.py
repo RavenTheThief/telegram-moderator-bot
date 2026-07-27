@@ -2,7 +2,7 @@ import re
 import logging
 import urllib.parse
 from datetime import datetime, timedelta
-from typing import Any, Awaitable, Callable, Dict
+from typing import Any, Awaitable, Callable, Dict, List
 from aiogram import BaseMiddleware
 from aiogram.types import Message, ChatPermissions
 from bot.services.db_service import db_service
@@ -70,8 +70,13 @@ class ModerationFilterMiddleware(BaseMiddleware):
         if settings.filter_anti_channel and event.sender_chat and event.sender_chat.id != chat_id:
             violation_reason = "Отправка сообщения от имени канала"
 
-        # 2. Anti-Forward Filter
-        elif settings.filter_anti_forward and (event.forward_from or event.forward_from_chat or event.forward_date):
+        # 2. Anti-Forward Filter (supports legacy and Telegram API 7.0+ forward_origin)
+        elif settings.filter_anti_forward and (
+            event.forward_from or 
+            event.forward_from_chat or 
+            event.forward_date or 
+            getattr(event, 'forward_origin', None) is not None
+        ):
             violation_reason = "Пересылка сообщений запрещена"
 
         # 3. Media Filters
@@ -90,13 +95,26 @@ class ModerationFilterMiddleware(BaseMiddleware):
         elif settings.filter_documents and event.document:
             violation_reason = "Документы и файлы запрещены"
 
-        # 4. Link & Domain Whitelist Filter
-        elif settings.filter_links and text:
-            url_pattern = r'(https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*)'
-            urls = re.findall(url_pattern, text)
-            if urls:
+        # 4. Link & Domain Whitelist Filter (extracts from raw text AND Telegram entities / text_link)
+        elif settings.filter_links:
+            extracted_urls = []
+
+            # Extract URLs from raw text/caption via regex
+            if text:
+                url_pattern = r'(https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}[^\s]*)'
+                extracted_urls.extend(re.findall(url_pattern, text))
+
+            # Extract URLs from Telegram message entities (e.g. formatted markdown text links)
+            entities = (event.entities or []) + (event.caption_entities or [])
+            for entity in entities:
+                if entity.type == "url" and text:
+                    extracted_urls.append(text[entity.offset:entity.offset + entity.length])
+                elif entity.type == "text_link" and entity.url:
+                    extracted_urls.append(entity.url)
+
+            if extracted_urls:
                 allowed_domains = [d.strip().lower() for d in settings.whitelisted_domains.split(",") if d.strip()]
-                for url in urls:
+                for url in extracted_urls:
                     clean_url = url if url.startswith("http") else "http://" + url
                     try:
                         parsed = urllib.parse.urlparse(clean_url)
