@@ -12,27 +12,32 @@ from bot.services.redis_service import redis_service
 logger = logging.getLogger(__name__)
 router = Router(name="captcha_router")
 
-# Emoji Captcha Dataset
+# Datasets
 EMOJI_DATASET = [
-    ("🍎", "Яблоко"),
-    ("🐶", "Собака"),
-    ("🚗", "Машина"),
-    ("⚽", "Мяч"),
-    ("⭐", "Звезда"),
-    ("🍕", "Пицца"),
-    ("🐱", "Кот"),
-    ("🎈", "Шарик"),
-    ("🚀", "Ракета"),
-    ("🎁", "Подарок")
+    ("🍎", "Яблоко"), ("🐶", "Собака"), ("🚗", "Машина"), ("⚽", "Мяч"),
+    ("⭐", "Звезда"), ("🍕", "Пицца"), ("🐱", "Кот"), ("🎈", "Шарик"),
+    ("🚀", "Ракета"), ("🎁", "Подарок")
 ]
 
-# Simple Logical Questions Dataset
 QUESTIONS_DATASET = [
     ("Сколько дней в одной неделе?", "7", ["5", "7", "10", "12"]),
     ("Какого цвета зеленая трава?", "Зеленый", ["Синий", "Зеленый", "Желтый", "Красный"]),
-    ("Сколько лап у здоровой кошки?", "4", ["2", "4", "6", "8"]),
+    ("Сколько лап у кошки?", "4", ["2", "4", "6", "8"]),
     ("Что идет сразу после зимы?", "Весна", ["Осень", "Весна", "Лето", "Ночь"]),
     ("Сколько пальцев на одной руке?", "5", ["3", "5", "8", "10"])
+]
+
+CATEGORIES_DATASET = [
+    ("Еду (Пища)", [("🍕", "Пицца"), ("🍎", "Яблоко"), ("🍔", "Бургер"), ("🍰", "Торт")], [("🚗", "Авто"), ("🐶", "Пес"), ("🚀", "Ракета"), ("⚽", "Мяч")]),
+    ("Животное", [("🐶", "Собака"), ("🐱", "Кот"), ("🦁", "Лев"), ("🐼", "Панда")], [("🍕", "Пицца"), ("🚗", "Авто"), ("🚀", "Ракета"), ("🎈", "Шарик")]),
+    ("Транспорт", [("🚗", "Машина"), ("🚀", "Ракета"), ("✈️", "Самолет"), ("🚲", "Велосипед")], [("🍎", "Яблоко"), ("🐶", "Пес"), ("⚽", "Мяч"), ("⭐", "Звезда")])
+]
+
+SHAPES_DATASET = [
+    ("Синий Квадрат 🟦", "🟦", ["🔴", "🟦", "🔺", "🟡"]),
+    ("Красный Круг 🔴", "🔴", ["🔴", "🟩", "⭐", "🔹"]),
+    ("Зеленый Квадрат 🟩", "🟩", ["💜", "🟩", "🔺", "🟡"]),
+    ("Желтый Круг 🟡", "🟡", ["🟦", "🔴", "🟡", "🔺"])
 ]
 
 async def start_captcha_background_worker(bot: Bot):
@@ -52,7 +57,6 @@ async def start_captcha_background_worker(bot: Bot):
                     continue
 
                 logger.info(f"Captcha expired for user {user_id} in chat {chat_id}. Applying action...")
-
                 await redis_service.delete_captcha(chat_id, user_id)
 
                 settings = await db_service.get_chat_settings(chat_id)
@@ -129,6 +133,16 @@ async def on_user_join(event: ChatMemberUpdated, bot: Bot):
     timeout = settings.captcha_timeout
     captcha_type = settings.captcha_type.lower()
 
+    # ROTATION MODE (Random Choice from Allowed Types)
+    if captcha_type == "random":
+        raw_types = getattr(settings, "captcha_enabled_types", "button,math,math_advanced,emoji,question,category,compare,shapes,sequence")
+        allowed_types = [t.strip().lower() for t in raw_types.split(",") if t.strip()]
+        if not allowed_types:
+            allowed_types = ["button"]
+        captcha_type = random.choice(allowed_types)
+        logger.info(f"Chat {chat_id}: Rotation picked captcha type '{captcha_type}' for user {new_user.id}")
+
+    # Generate Captcha according to chosen type:
     if captcha_type == "math":
         a, b = random.randint(1, 10), random.randint(1, 10)
         correct_ans = a + b
@@ -190,6 +204,84 @@ async def on_user_join(event: ChatMemberUpdated, bot: Bot):
         )
         answer_key = correct_emoji
 
+    elif captcha_type == "category":
+        cat_name, target_items, wrong_items = random.choice(CATEGORIES_DATASET)
+        correct_item = random.choice(target_items)
+        distractors = random.sample(wrong_items, 3)
+        all_opts = [correct_item] + distractors
+        random.shuffle(all_opts)
+
+        buttons = [InlineKeyboardButton(text=opt[0], callback_data=f"captcha:{new_user.id}:{opt[0]}") for opt in all_opts]
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
+        caption = (
+            f"👋 <b>{user_fullname}</b>, добро пожаловать!\n"
+            f"Для входа в чат выберите из кнопок <b>{cat_name}</b>:\n"
+            f"У вас есть <b>{timeout} секунд</b>."
+        )
+        answer_key = correct_item[0]
+
+    elif captcha_type == "compare":
+        num1 = random.randint(10, 50)
+        num2 = random.randint(10, 50)
+        while num2 == num1:
+            num2 = random.randint(10, 50)
+
+        is_bigger = random.choice([True, False])
+        if is_bigger:
+            correct_num = max(num1, num2)
+            word = "БОЛЬШЕ"
+        else:
+            correct_num = min(num1, num2)
+            word = "МЕНЬШЕ"
+
+        buttons = [
+            InlineKeyboardButton(text=str(num1), callback_data=f"captcha:{new_user.id}:{num1}"),
+            InlineKeyboardButton(text=str(num2), callback_data=f"captcha:{new_user.id}:{num2}")
+        ]
+        if random.choice([True, False]):
+            buttons.reverse()
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
+        caption = (
+            f"👋 <b>{user_fullname}</b>, добро пожаловать!\n"
+            f"Какое число <b>{word}</b>? (<b>{num1}</b> или <b>{num2}</b>)\n"
+            f"У вас есть <b>{timeout} секунд</b>."
+        )
+        answer_key = str(correct_num)
+
+    elif captcha_type == "shapes":
+        target_name, correct_shape, options_list = random.choice(SHAPES_DATASET)
+        opts_copy = list(options_list)
+        random.shuffle(opts_copy)
+
+        buttons = [InlineKeyboardButton(text=opt, callback_data=f"captcha:{new_user.id}:{opt}") for opt in opts_copy]
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
+        caption = (
+            f"👋 <b>{user_fullname}</b>, добро пожаловать!\n"
+            f"Выберите фигуру: <b>{target_name}</b>\n"
+            f"У вас есть <b>{timeout} секунд</b>."
+        )
+        answer_key = correct_shape
+
+    elif captcha_type == "sequence":
+        nums = random.sample(range(1, 99), 4)
+        is_min = random.choice([True, False])
+        if is_min:
+            correct_num = min(nums)
+            word = "НАИМЕНЬШЕЕ"
+        else:
+            correct_num = max(nums)
+            word = "НАИБОЛЬШЕЕ"
+
+        buttons = [InlineKeyboardButton(text=str(n), callback_data=f"captcha:{new_user.id}:{n}") for n in nums]
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
+        caption = (
+            f"👋 <b>{user_fullname}</b>, добро пожаловать!\n"
+            f"Нажмите на <b>{word}</b> число из списка: <b>{', '.join(map(str, nums))}</b>\n"
+            f"У вас есть <b>{timeout} секунд</b>."
+        )
+        answer_key = str(correct_num)
+
     elif captcha_type == "question":
         q_text, correct_ans, options_list = random.choice(QUESTIONS_DATASET)
         opts_copy = list(options_list)
@@ -200,6 +292,24 @@ async def on_user_join(event: ChatMemberUpdated, bot: Bot):
         caption = (
             f"👋 <b>{user_fullname}</b>, добро пожаловать!\n"
             f"Ответьте на вопрос: <b>{q_text}</b>\n"
+            f"У вас есть <b>{timeout} секунд</b>."
+        )
+        answer_key = correct_ans
+
+    elif captcha_type == "custom_question" and getattr(settings, "custom_captcha_question", None) and getattr(settings, "custom_captcha_answer", None):
+        q_text = settings.custom_captcha_question
+        correct_ans = settings.custom_captcha_answer.strip()
+        
+        # Generate 3 dummy distractor options
+        distractors = ["Правило 1", "Правило 2", "Отмена"]
+        opts = [correct_ans] + distractors
+        random.shuffle(opts)
+
+        buttons = [InlineKeyboardButton(text=opt, callback_data=f"captcha:{new_user.id}:{opt}") for opt in opts]
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[b] for b in buttons])
+        caption = (
+            f"👋 <b>{user_fullname}</b>, добро пожаловать!\n"
+            f"Вопрос сообщества: <b>{q_text}</b>\n"
             f"У вас есть <b>{timeout} секунд</b>."
         )
         answer_key = correct_ans
@@ -249,7 +359,7 @@ async def on_captcha_callback(callback: CallbackQuery, bot: Bot):
 
     correct_answer = captcha_data.get("answer")
 
-    if user_answer == correct_answer:
+    if user_answer.strip().lower() == correct_answer.strip().lower():
         await redis_service.delete_captcha(chat_id, user_id)
         await callback.answer("✅ Капча успешно пройдена! Добро пожаловать.")
 

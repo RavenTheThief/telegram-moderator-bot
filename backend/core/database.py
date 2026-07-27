@@ -49,7 +49,14 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # Auto-migrate new columns for existing tables
-        try:
-            await conn.execute(text("ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS warn_expire_hours INTEGER DEFAULT 24;"))
-        except Exception as e:
-            print(f"Migration note: {e}")
+        migrations = [
+            "ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS warn_expire_hours INTEGER DEFAULT 24;",
+            "ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS captcha_enabled_types TEXT DEFAULT 'button,math,math_advanced,emoji,question,category,compare,shapes,sequence';",
+            "ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS custom_captcha_question TEXT;",
+            "ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS custom_captcha_answer VARCHAR(255);"
+        ]
+        for query in migrations:
+            try:
+                await conn.execute(text(query))
+            except Exception as e:
+                print(f"Migration note: {e}")

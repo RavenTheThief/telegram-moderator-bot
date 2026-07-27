@@ -16,7 +16,10 @@ class TokenResponse(BaseModel):
 class ChatSettingsBase(BaseModel):
     # Captcha
     captcha_enabled: bool = True
-    captcha_type: str = "button"
+    captcha_type: str = "button"  # 'button', 'math', 'math_advanced', 'emoji', 'question', 'category', 'compare', 'shapes', 'sequence', 'custom_question', 'random'
+    captcha_enabled_types: str = "button,math,math_advanced,emoji,question,category,compare,shapes,sequence"
+    custom_captcha_question: Optional[str] = None
+    custom_captcha_answer: Optional[str] = None
     captcha_timeout: int = 120
     captcha_fail_action: str = "kick"
     welcome_message_enabled: bool = True

@@ -27,7 +27,10 @@ class ChatSettings(Base):
 
     # Captcha
     captcha_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    captcha_type: Mapped[str] = mapped_column(String(50), default="button")  # 'button' or 'math'
+    captcha_type: Mapped[str] = mapped_column(String(50), default="button")  # 'button', 'math', 'math_advanced', 'emoji', 'question', 'category', 'compare', 'shapes', 'sequence', 'custom_question', 'random'
+    captcha_enabled_types: Mapped[str] = mapped_column(Text, default="button,math,math_advanced,emoji,question,category,compare,shapes,sequence")
+    custom_captcha_question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    custom_captcha_answer: Mapped[str | None] = mapped_column(String(255), nullable=True)
     captcha_timeout: Mapped[int] = mapped_column(Integer, default=120)  # seconds
     captcha_fail_action: Mapped[str] = mapped_column(String(50), default="kick")  # 'kick' or 'ban'
     welcome_message_enabled: Mapped[bool] = mapped_column(Boolean, default=True)

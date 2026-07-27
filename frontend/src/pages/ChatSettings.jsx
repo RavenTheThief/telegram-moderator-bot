@@ -1,10 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ShieldCheck, AlertTriangle, MessageSquare, Volume2, Image, FileText, UserPlus, Sliders, Save, CheckCircle, Plus, Trash2, Code 
+  ShieldCheck, AlertTriangle, MessageSquare, Volume2, Image, FileText, UserPlus, Sliders, Save, CheckCircle, Plus, Trash2, Code, Shuffle 
 } from 'lucide-react';
 import ToggleSwitch from '../components/ToggleSwitch';
 import SliderControl from '../components/SliderControl';
 import { settingsAPI } from '../services/api';
+
+const ALL_CAPTCHA_TYPES = [
+  { id: 'button', label: 'Кнопка "Я не робот"' },
+  { id: 'math', label: 'Простая математика (+)' },
+  { id: 'math_advanced', label: 'Сложная математика (-, *)' },
+  { id: 'emoji', label: 'Эмодзи-капча (Найди иконку 🍎)' },
+  { id: 'question', label: 'Вопросы на логику' },
+  { id: 'category', label: 'Категории (Еда/Транспорт/Пес)' },
+  { id: 'compare', label: 'Сравнение чисел (Больше/Меньше)' },
+  { id: 'shapes', label: 'Цвета и Фигуры (Синий Квадрат)' },
+  { id: 'sequence', label: 'Наименьшее/Наибольшее число' },
+  { id: 'custom_question', label: 'Вопрос Сообщества (Свой ответ)' },
+];
 
 export default function ChatSettings({ chatId, chatTitle }) {
   const [settings, setSettings] = useState(null);
@@ -79,6 +92,19 @@ export default function ChatSettings({ chatId, chatTitle }) {
     setSettings(prev => ({ ...prev, [field]: value }));
   };
 
+  const handleToggleRotationType = (typeId) => {
+    const currentRaw = settings.captcha_enabled_types || 'button,math,math_advanced,emoji,question,category,compare,shapes,sequence';
+    let currentList = currentRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+    if (currentList.includes(typeId)) {
+      currentList = currentList.filter(t => t !== typeId);
+    } else {
+      currentList.push(typeId);
+    }
+
+    updateField('captcha_enabled_types', currentList.join(','));
+  };
+
   if (!chatId) {
     return (
       <div className="p-12 text-center text-gray-400 bg-dark-800/40 rounded-2xl border border-gray-800">
@@ -102,6 +128,8 @@ export default function ChatSettings({ chatId, chatTitle }) {
     { id: 'stopwords', label: '🚫 Стоп-слова' },
     { id: 'protection', label: '🔒 Анти-рейд & Ограничения' },
   ];
+
+  const enabledRotationList = (settings.captcha_enabled_types || '').split(',').map(s => s.trim());
 
   return (
     <div className="space-y-6">
@@ -167,17 +195,23 @@ export default function ChatSettings({ chatId, chatTitle }) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-3.5 bg-dark-800/40 rounded-xl border border-gray-800">
-              <label className="block text-sm font-medium text-gray-200 mb-2">Тип Капчи</label>
+              <label className="block text-sm font-medium text-gray-200 mb-2">Режим Капчи</label>
               <select
                 value={settings.captcha_type}
                 onChange={(e) => updateField('captcha_type', e.target.value)}
                 className="w-full bg-dark-700 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
               >
+                <option value="random">🔀 РОТАЦИЯ (Случайный выбор из списка)</option>
                 <option value="button">Кнопка "Я не робот"</option>
-                <option value="math">Простой пример (Сложение: 4 + 3 = ?)</option>
-                <option value="math_advanced">Сложный пример (Вычитание / Умножение)</option>
+                <option value="math">Простая математика (+)</option>
+                <option value="math_advanced">Сложная математика (-, *)</option>
                 <option value="emoji">Эмодзи-капча (Найди иконку 🍎)</option>
-                <option value="question">Вопрос на логику (Сколько лап у кошки?)</option>
+                <option value="question">Вопросы на логику</option>
+                <option value="category">Поиск по Категориям (Еда/Пес)</option>
+                <option value="compare">Сравнение чисел (Больше/Меньше)</option>
+                <option value="shapes">Цвета и фигуры (Синий Квадрат)</option>
+                <option value="sequence">Наименьшее/Наибольшее число</option>
+                <option value="custom_question">⭐ Вопрос Сообщества (Свой ответ)</option>
               </select>
             </div>
 
@@ -193,6 +227,70 @@ export default function ChatSettings({ chatId, chatTitle }) {
               </select>
             </div>
           </div>
+
+          {/* ROTATION OPTIONS CHECKBOXES */}
+          {settings.captcha_type === 'random' && (
+            <div className="p-4 bg-blue-950/20 border border-blue-500/30 rounded-2xl space-y-3">
+              <div className="flex items-center space-x-2 text-blue-400 font-bold text-sm">
+                <Shuffle className="w-4 h-4" />
+                <span>Настройка Ротации: Выберите капчи для случайного выбора</span>
+              </div>
+              <p className="text-xs text-gray-400">Каждому новому участнику будет приходить случайная капча из отмеченных ниже:</p>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 pt-1">
+                {ALL_CAPTCHA_TYPES.map((typeObj) => {
+                  const isChecked = enabledRotationList.includes(typeObj.id);
+                  return (
+                    <label
+                      key={typeObj.id}
+                      className={`flex items-center space-x-2.5 p-2.5 rounded-xl border text-xs font-medium cursor-pointer transition-all ${
+                        isChecked
+                          ? 'bg-blue-600/10 border-blue-500/40 text-blue-300'
+                          : 'bg-dark-800/40 border-gray-800 text-gray-400 hover:border-gray-700'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => handleToggleRotationType(typeObj.id)}
+                        className="rounded border-gray-700 bg-dark-700 text-blue-500 focus:ring-0"
+                      />
+                      <span>{typeObj.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* CUSTOM COMMUNITY QUESTION INPUTS */}
+          {(settings.captcha_type === 'custom_question' || (settings.captcha_type === 'random' && enabledRotationList.includes('custom_question'))) && (
+            <div className="p-4 bg-purple-950/20 border border-purple-500/30 rounded-2xl space-y-3">
+              <h4 className="font-bold text-purple-300 text-sm">⭐ Настройка Своего Вопроса Группы</h4>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-300 mb-1">Текст вопроса для нового участника</label>
+                  <input
+                    type="text"
+                    placeholder="Например: Какая главная тематика нашего сервера?"
+                    value={settings.custom_captcha_question || ''}
+                    onChange={(e) => updateField('custom_captcha_question', e.target.value)}
+                    className="w-full bg-dark-700 border border-gray-700 text-white rounded-lg p-2.5 text-sm focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-300 mb-1">Правильный ответ (Текст на кнопке)</label>
+                  <input
+                    type="text"
+                    placeholder="Например: Игры и Программирование"
+                    value={settings.custom_captcha_answer || ''}
+                    onChange={(e) => updateField('custom_captcha_answer', e.target.value)}
+                    className="w-full bg-dark-700 border border-gray-700 text-white rounded-lg p-2.5 text-sm focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           <SliderControl
             label="Таймаут прохождения капчи"
