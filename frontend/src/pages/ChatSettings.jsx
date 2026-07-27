@@ -19,7 +19,7 @@ const ALL_CAPTCHA_TYPES = [
   { id: 'custom_question', label: 'Вопрос Сообщества (Свой ответ)' },
 ];
 
-export default function ChatSettings({ chatId, chatTitle }) {
+export default function ChatSettings({ chatId, chatTitle, onDeleteChat }) {
   const [settings, setSettings] = useState(null);
   const [stopWords, setStopWords] = useState([]);
   const [newStopWord, setNewStopWord] = useState('');
@@ -162,27 +162,40 @@ export default function ChatSettings({ chatId, chatTitle }) {
           <p className="text-xs text-gray-400">Конфигурация правил безопасности и автоматических наказаний</p>
         </div>
 
-        <button
-          onClick={handleSaveSettings}
-          disabled={saving}
-          className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl font-semibold text-xs transition-all shadow-lg ${
-            savedSuccess 
-              ? 'bg-emerald-600 text-white shadow-emerald-500/20' 
-              : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'
-          }`}
-        >
-          {savedSuccess ? (
-            <>
-              <CheckCircle className="w-4 h-4 text-emerald-300" />
-              <span>Сохранено!</span>
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4" />
-              <span>{saving ? 'Сохранение...' : 'Сохранить изменения'}</span>
-            </>
+        <div className="flex items-center space-x-2">
+          {onDeleteChat && (
+            <button
+              onClick={() => onDeleteChat({ id: chatId, title: chatTitle || `ID ${chatId}` })}
+              className="flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl font-semibold text-xs bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 transition-all"
+              title="Удалить этот чат из системы и вывести бота"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Удалить чат</span>
+            </button>
           )}
-        </button>
+
+          <button
+            onClick={handleSaveSettings}
+            disabled={saving}
+            className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl font-semibold text-xs transition-all shadow-lg ${
+              savedSuccess 
+                ? 'bg-emerald-600 text-white shadow-emerald-500/20' 
+                : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-500/20'
+            }`}
+          >
+            {savedSuccess ? (
+              <>
+                <CheckCircle className="w-4 h-4 text-emerald-300" />
+                <span>Сохранено!</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                <span>{saving ? 'Сохранение...' : 'Сохранить изменения'}</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}

@@ -53,6 +53,29 @@ export default function App() {
     }
   };
 
+  const handleDeleteChat = async (chat) => {
+    const confirmMsg = `Вы действительно хотите удалить чат "${chat.title}" из панели?\n\nБот выйдет из этой группы Telegram, и все настройки чата будут удалены.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      await chatsAPI.deleteChat(chat.id);
+      const updatedChats = chats.filter(c => c.id !== chat.id);
+      setChats(updatedChats);
+
+      if (selectedChatId === chat.id) {
+        if (updatedChats.length > 0) {
+          setSelectedChatId(updatedChats[0].id);
+        } else {
+          setSelectedChatId(null);
+        }
+      }
+      await fetchChats();
+    } catch (err) {
+      console.error("Failed to delete chat", err);
+      alert("Ошибка при удалении чата.");
+    }
+  };
+
   const handleLoginSuccess = (user) => {
     setUsername(user);
     setIsAuthenticated(true);
@@ -76,6 +99,8 @@ export default function App() {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
+  const selectedChat = chats.find(c => c.id === selectedChatId);
+
   return (
     <div className="min-h-screen bg-dark-900 text-slate-100 flex flex-col">
       <Navbar username={username} onLogout={handleLogout} />
@@ -95,11 +120,16 @@ export default function App() {
               chats={chats}
               onSelectChat={(id) => setSelectedChatId(id)}
               onNavigateToSettings={() => setActiveTab('settings')}
+              onDeleteChat={handleDeleteChat}
             />
           )}
 
           {activeTab === 'settings' && (
-            <ChatSettings chatId={selectedChatId} />
+            <ChatSettings
+              chatId={selectedChatId}
+              chatTitle={selectedChat?.title}
+              onDeleteChat={handleDeleteChat}
+            />
           )}
 
           {activeTab === 'logs' && (

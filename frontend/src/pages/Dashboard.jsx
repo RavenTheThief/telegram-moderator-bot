@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  MessageSquare, Users, UserX, AlertTriangle, Activity, ShieldAlert, Sliders, ExternalLink 
+  MessageSquare, Users, UserX, AlertTriangle, Activity, ShieldAlert, Sliders, ExternalLink, Trash2 
 } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import StatCard from '../components/StatCard';
@@ -20,7 +20,7 @@ const ACTION_TRANSLATIONS = {
   warn: 'Выдача варна'
 };
 
-export default function Dashboard({ chats, onSelectChat, onNavigateToSettings }) {
+export default function Dashboard({ chats, onSelectChat, onNavigateToSettings, onDeleteChat }) {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -199,16 +199,27 @@ export default function Dashboard({ chats, onSelectChat, onNavigateToSettings })
                   </div>
                 </div>
 
-                <div className="mt-5 pt-3 border-t border-gray-800 flex items-center justify-between">
+                <div className="mt-5 pt-3 border-t border-gray-800 flex items-center space-x-2">
                   <button
                     onClick={() => {
                       onSelectChat(chat.id);
                       onNavigateToSettings();
                     }}
-                    className="w-full flex items-center justify-center space-x-2 bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white px-4 py-2 rounded-xl border border-blue-500/30 text-xs font-semibold transition-all"
+                    className="flex-1 flex items-center justify-center space-x-2 bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white px-4 py-2 rounded-xl border border-blue-500/30 text-xs font-semibold transition-all"
                   >
                     <Sliders className="w-4 h-4" />
                     <span>Управлять настройками</span>
+                  </button>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onDeleteChat) onDeleteChat(chat);
+                    }}
+                    className="flex items-center justify-center p-2 bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white rounded-xl border border-rose-500/30 text-xs font-semibold transition-all shrink-0"
+                    title="Удалить чат из панели и вывести бота"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
               </div>

@@ -1,3 +1,6 @@
+import os
+import logging
+import httpx
 from datetime import datetime, timedelta
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,8 +10,11 @@ from sqlalchemy.orm import selectinload
 
 from backend.core.database import get_db
 from backend.core.security import get_current_user
+from backend.core.redis import backend_redis
 from backend.models.models import Chat, User, Warn, AuditLog, ChatSettings
 from backend.schemas.schemas import ChatResponse, DashboardStatsResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/chats", tags=["Chats"])
 
@@ -94,3 +100,41 @@ async def get_chat_by_id(
     if not chat:
         raise HTTPException(status_code=404, detail="Чат не найден")
     return chat
+
+@router.delete("/{chat_id}")
+async def delete_chat(
+    chat_id: int,
+    db: AsyncSession = Depends(get_db),
+    username: str = Depends(get_current_user)
+):
+    result = await db.execute(
+        select(Chat).where(Chat.id == chat_id)
+    )
+    chat = result.scalar_one_or_none()
+    if not chat:
+        raise HTTPException(status_code=404, detail="Чат не найден")
+
+    # Call Telegram API leaveChat to make the bot exit the Telegram group
+    BOT_TOKEN = os.getenv("BOT_TOKEN", "8797571672:AAGQ2u_C-PWImETr_3YuB5ft0FUkZL3-M9g")
+    async with httpx.AsyncClient() as client:
+        try:
+            res = await client.post(
+                f"https://api.telegram.org/bot{BOT_TOKEN}/leaveChat",
+                json={"chat_id": chat_id},
+                timeout=5.0
+            )
+            logger.info(f"leaveChat response for chat {chat_id}: {res.status_code} {res.text}")
+        except Exception as e:
+            logger.error(f"Error calling leaveChat for chat {chat_id}: {e}")
+
+    # Delete chat from PostgreSQL DB (Cascades to settings, users, warns, stop_words, audit_logs)
+    await db.delete(chat)
+    await db.commit()
+
+    # Invalidate Redis cache
+    try:
+        await backend_redis.invalidate_chat_cache(chat_id)
+    except Exception as e:
+        logger.error(f"Error invalidating cache for deleted chat {chat_id}: {e}")
+
+    return {"status": "success", "message": "Чат успешно удален из системы, бот покинул группу"}

@@ -40,6 +40,7 @@ export const chatsAPI = {
   getChats: () => api.get('/api/chats'),
   getStats: () => api.get('/api/chats/stats'),
   getChatById: (id) => api.get(`/api/chats/${id}`),
+  deleteChat: (id) => api.delete(`/api/chats/${id}`),
 };
 
 export const settingsAPI = {
