@@ -1,5 +1,6 @@
 import os
 from typing import AsyncGenerator
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -47,3 +48,8 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Auto-migrate new columns for existing tables
+        try:
+            await conn.execute(text("ALTER TABLE chat_settings ADD COLUMN IF NOT EXISTS warn_expire_hours INTEGER DEFAULT 24;"))
+        except Exception as e:
+            print(f"Migration note: {e}")
