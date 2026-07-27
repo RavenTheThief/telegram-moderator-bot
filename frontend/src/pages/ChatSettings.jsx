@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ShieldCheck, AlertTriangle, MessageSquare, Volume2, Image, FileText, UserPlus, Sliders, Save, CheckCircle, Plus, Trash2, Code, Shuffle 
+  ShieldCheck, AlertTriangle, MessageSquare, Volume2, Image, FileText, UserPlus, Sliders, Save, CheckCircle, Plus, Trash2, Code, Shuffle, ListPlus 
 } from 'lucide-react';
 import ToggleSwitch from '../components/ToggleSwitch';
 import SliderControl from '../components/SliderControl';
@@ -23,10 +23,13 @@ export default function ChatSettings({ chatId, chatTitle }) {
   const [settings, setSettings] = useState(null);
   const [stopWords, setStopWords] = useState([]);
   const [newStopWord, setNewStopWord] = useState('');
+  const [bulkWordsText, setBulkWordsText] = useState('');
+  const [isBulkMode, setIsBulkMode] = useState(false);
   const [isRegex, setIsRegex] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [addingBulk, setAddingBulk] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [activeTab, setActiveTab] = useState('captcha');
 
@@ -76,6 +79,22 @@ export default function ChatSettings({ chatId, chatTitle }) {
       setIsRegex(false);
     } catch (err) {
       alert("Ошибка добавления стоп-слова");
+    }
+  };
+
+  const handleAddBulkStopWords = async (e) => {
+    e.preventDefault();
+    if (!bulkWordsText.trim()) return;
+    setAddingBulk(true);
+    try {
+      const res = await settingsAPI.addBulkStopWords(chatId, bulkWordsText.trim(), isRegex);
+      setStopWords(res.data);
+      setBulkWordsText('');
+      setIsRegex(false);
+    } catch (err) {
+      alert("Ошибка добавления списка стоп-слов");
+    } finally {
+      setAddingBulk(false);
     }
   };
 
@@ -505,35 +524,97 @@ export default function ChatSettings({ chatId, chatTitle }) {
       {/* TAB 4: STOP WORDS */}
       {activeTab === 'stopwords' && (
         <div className="space-y-6">
-          <form onSubmit={handleAddStopWord} className="p-4 bg-dark-800/40 rounded-xl border border-gray-800 space-y-4">
-            <h4 className="font-bold text-white text-sm">Добавить Запрещенное Слово</h4>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <input
-                type="text"
-                placeholder="Введение запрещенного слова или Regex..."
-                value={newStopWord}
-                onChange={(e) => setNewStopWord(e.target.value)}
-                className="flex-1 bg-dark-700 border border-gray-700 text-white rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
-              />
-              <button
-                type="submit"
-                className="flex items-center justify-center space-x-1.5 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-xl text-xs font-semibold transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Добавить</span>
-              </button>
-            </div>
+          {/* Toggle Mode Single vs Bulk */}
+          <div className="flex items-center space-x-2 border-b border-gray-800 pb-3">
+            <button
+              type="button"
+              onClick={() => setIsBulkMode(false)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                !isBulkMode
+                  ? 'bg-blue-600/10 text-blue-400 border border-blue-500/30'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              + Одно слово
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsBulkMode(true)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1 ${
+                isBulkMode
+                  ? 'bg-blue-600/10 text-blue-400 border border-blue-500/30'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              <ListPlus className="w-3.5 h-3.5" />
+              <span>📋 Массовый ввод (Списком)</span>
+            </button>
+          </div>
 
-            <label className="flex items-center space-x-2 cursor-pointer text-xs text-gray-400">
-              <input
-                type="checkbox"
-                checked={isRegex}
-                onChange={(e) => setIsRegex(e.target.checked)}
-                className="rounded border-gray-700 bg-dark-700 text-blue-500 focus:ring-0"
+          {isBulkMode ? (
+            <form onSubmit={handleAddBulkStopWords} className="p-4 bg-dark-800/40 rounded-xl border border-gray-800 space-y-4">
+              <h4 className="font-bold text-white text-sm">Массовое добавление стоп-слов</h4>
+              <p className="text-xs text-gray-400">
+                Вставьте список слов через запятую или по одному слову на строке:
+              </p>
+              <textarea
+                rows={5}
+                placeholder={"спам, скам, мошенник\nказино\nкрипта"}
+                value={bulkWordsText}
+                onChange={(e) => setBulkWordsText(e.target.value)}
+                className="w-full bg-dark-700 border border-gray-700 text-white rounded-xl p-3 text-sm focus:outline-none focus:border-blue-500 font-mono"
               />
-              <span>Использовать как Регулярное выражение (Regex)</span>
-            </label>
-          </form>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <label className="flex items-center space-x-2 cursor-pointer text-xs text-gray-400">
+                  <input
+                    type="checkbox"
+                    checked={isRegex}
+                    onChange={(e) => setIsRegex(e.target.checked)}
+                    className="rounded border-gray-700 bg-dark-700 text-blue-500 focus:ring-0"
+                  />
+                  <span>Добавить список как Регулярные выражения (Regex)</span>
+                </label>
+                <button
+                  type="submit"
+                  disabled={addingBulk}
+                  className="flex items-center justify-center space-x-1.5 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{addingBulk ? 'Добавление...' : 'Загрузить список слов'}</span>
+                </button>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={handleAddStopWord} className="p-4 bg-dark-800/40 rounded-xl border border-gray-800 space-y-4">
+              <h4 className="font-bold text-white text-sm">Добавить Запрещенное Слово</h4>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="text"
+                  placeholder="Введение запрещенного слова или Regex..."
+                  value={newStopWord}
+                  onChange={(e) => setNewStopWord(e.target.value)}
+                  className="flex-1 bg-dark-700 border border-gray-700 text-white rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-blue-500"
+                />
+                <button
+                  type="submit"
+                  className="flex items-center justify-center space-x-1.5 bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded-xl text-xs font-semibold transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Добавить</span>
+                </button>
+              </div>
+
+              <label className="flex items-center space-x-2 cursor-pointer text-xs text-gray-400">
+                <input
+                  type="checkbox"
+                  checked={isRegex}
+                  onChange={(e) => setIsRegex(e.target.checked)}
+                  className="rounded border-gray-700 bg-dark-700 text-blue-500 focus:ring-0"
+                />
+                <span>Использовать как Регулярное выражение (Regex)</span>
+              </label>
+            </form>
+          )}
 
           <div className="space-y-3">
             <h4 className="font-bold text-white text-sm">Список Запрещенных Слов ({stopWords.length})</h4>

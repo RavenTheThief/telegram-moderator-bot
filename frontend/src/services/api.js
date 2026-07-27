@@ -47,6 +47,7 @@ export const settingsAPI = {
   updateSettings: (chatId, settings) => api.put(`/api/chats/${chatId}/settings`, settings),
   getStopWords: (chatId) => api.get(`/api/chats/${chatId}/stopwords`),
   addStopWord: (chatId, word, isRegex) => api.post(`/api/chats/${chatId}/stopwords`, { word, is_regex: isRegex }),
+  addBulkStopWords: (chatId, words, isRegex) => api.post(`/api/chats/${chatId}/stopwords/bulk`, { words, is_regex: isRegex }),
   deleteStopWord: (chatId, stopWordId) => api.delete(`/api/chats/${chatId}/stopwords/${stopWordId}`),
 };
 

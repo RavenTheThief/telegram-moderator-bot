@@ -86,6 +86,10 @@ class StopWordCreate(BaseModel):
     word: str
     is_regex: bool = False
 
+class BulkStopWordCreate(BaseModel):
+    words: str
+    is_regex: bool = False
+
 class StopWordResponse(BaseModel):
     id: int
     chat_id: int

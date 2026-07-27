@@ -8,7 +8,10 @@ from backend.core.database import get_db
 from backend.core.security import get_current_user
 from backend.core.redis import backend_redis
 from backend.models.models import ChatSettings, StopWord, Chat
-from backend.schemas.schemas import ChatSettingsResponse, ChatSettingsUpdate, StopWordResponse, StopWordCreate
+from backend.schemas.schemas import (
+    ChatSettingsResponse, ChatSettingsUpdate, 
+    StopWordResponse, StopWordCreate, BulkStopWordCreate
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chats/{chat_id}", tags=["Settings & Filters"])
@@ -99,6 +102,55 @@ async def add_stop_word(
         logger.error(f"Error invalidating chat cache for {chat_id}: {e}")
 
     return stop_word
+
+@router.post("/stopwords/bulk", response_model=List[StopWordResponse])
+async def add_bulk_stop_words(
+    chat_id: int,
+    data: BulkStopWordCreate,
+    db: AsyncSession = Depends(get_db),
+    username: str = Depends(get_current_user)
+):
+    raw_text = data.words or ""
+    tokens = []
+    for line in raw_text.splitlines():
+        for item in line.split(","):
+            cleaned = item.strip()
+            if cleaned and cleaned not in tokens:
+                tokens.append(cleaned)
+
+    if not tokens:
+        return []
+
+    existing_res = await db.execute(
+        select(StopWord.word).where(StopWord.chat_id == chat_id)
+    )
+    existing_words = set(existing_res.scalars().all())
+
+    new_objects = []
+    for word in tokens:
+        if word not in existing_words:
+            sw = StopWord(
+                chat_id=chat_id,
+                word=word,
+                is_regex=data.is_regex
+            )
+            db.add(sw)
+            new_objects.append(sw)
+
+    if new_objects:
+        await db.commit()
+        for sw in new_objects:
+            await db.refresh(sw)
+
+        try:
+            await backend_redis.invalidate_chat_cache(chat_id)
+        except Exception as e:
+            logger.error(f"Error invalidating chat cache for {chat_id}: {e}")
+
+    result = await db.execute(
+        select(StopWord).where(StopWord.chat_id == chat_id).order_by(StopWord.id.desc())
+    )
+    return result.scalars().all()
 
 @router.delete("/stopwords/{stop_word_id}")
 async def delete_stop_word(
