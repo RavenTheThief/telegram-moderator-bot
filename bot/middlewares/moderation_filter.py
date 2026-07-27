@@ -2,7 +2,7 @@ import re
 import logging
 import urllib.parse
 from datetime import datetime, timedelta
-from typing import Any, Awaitable, Callable, Dict, List
+from typing import Any, Awaitable, Callable, Dict
 from aiogram import BaseMiddleware
 from aiogram.types import Message, ChatPermissions
 from bot.services.db_service import db_service
@@ -67,11 +67,11 @@ class ModerationFilterMiddleware(BaseMiddleware):
         violation_reason = None
 
         # 1. Anti-Channel Filter (messages sent on behalf of a Telegram channel)
-        if settings.filter_anti_channel and event.sender_chat and event.sender_chat.id != chat_id:
+        if not violation_reason and settings.filter_anti_channel and event.sender_chat and event.sender_chat.id != chat_id:
             violation_reason = "Отправка сообщения от имени канала"
 
         # 2. Anti-Forward Filter (supports legacy and Telegram API 7.0+ forward_origin)
-        elif settings.filter_anti_forward and (
+        if not violation_reason and settings.filter_anti_forward and (
             event.forward_from or 
             event.forward_from_chat or 
             event.forward_date or 
@@ -80,23 +80,24 @@ class ModerationFilterMiddleware(BaseMiddleware):
             violation_reason = "Пересылка сообщений запрещена"
 
         # 3. Media Filters
-        elif settings.filter_gifs and event.animation:
-            violation_reason = "Отправка GIF-анимаций запрещена"
-        elif settings.filter_stickers and event.sticker:
-            violation_reason = "Отправка стикеров запрещена"
-        elif settings.filter_voice and event.voice:
-            violation_reason = "Голосовые сообщения запрещены"
-        elif settings.filter_video_notes and event.video_note:
-            violation_reason = "Видео-сообщения (кружочки) запрещены"
-        elif settings.filter_audio and event.audio:
-            violation_reason = "Аудиозаписи запрещены"
-        elif settings.filter_video and event.video:
-            violation_reason = "Видеофайлы запрещены"
-        elif settings.filter_documents and event.document:
-            violation_reason = "Документы и файлы запрещены"
+        if not violation_reason:
+            if settings.filter_gifs and event.animation:
+                violation_reason = "Отправка GIF-анимаций запрещена"
+            elif settings.filter_stickers and event.sticker:
+                violation_reason = "Отправка стикеров запрещена"
+            elif settings.filter_voice and event.voice:
+                violation_reason = "Голосовые сообщения запрещены"
+            elif settings.filter_video_notes and event.video_note:
+                violation_reason = "Видео-сообщения (кружочки) запрещены"
+            elif settings.filter_audio and event.audio:
+                violation_reason = "Аудиозаписи запрещены"
+            elif settings.filter_video and event.video:
+                violation_reason = "Видеофайлы запрещены"
+            elif settings.filter_documents and event.document:
+                violation_reason = "Документы и файлы запрещены"
 
         # 4. Link & Domain Whitelist Filter (extracts from raw text AND Telegram entities / text_link)
-        elif settings.filter_links:
+        if not violation_reason and settings.filter_links:
             extracted_urls = []
 
             # Extract URLs from raw text/caption via regex
@@ -130,8 +131,8 @@ class ModerationFilterMiddleware(BaseMiddleware):
                         violation_reason = "Запрещенная ссылка"
                         break
 
-        # 5. Stop-Words Filter
-        elif text:
+        # 5. Stop-Words Filter (Checked independently)
+        if not violation_reason and text:
             stop_words = await db_service.get_stop_words(chat_id)
             for sw in stop_words:
                 if sw.is_regex:
@@ -139,8 +140,8 @@ class ModerationFilterMiddleware(BaseMiddleware):
                         if re.search(sw.word, text, re.IGNORECASE):
                             violation_reason = f"Стоп-слово (Regex: {sw.word})"
                             break
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.error(f"Error executing regex stop-word '{sw.word}': {e}")
                 else:
                     if sw.word.lower() in text.lower():
                         violation_reason = f"Стоп-слово ({sw.word})"
