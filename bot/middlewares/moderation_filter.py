@@ -1,10 +1,13 @@
 import re
+import logging
 import urllib.parse
 from datetime import datetime, timedelta
-from typing import Any, Awaitable, Callable, Dict, List
+from typing import Any, Awaitable, Callable, Dict
 from aiogram import BaseMiddleware
 from aiogram.types import Message, ChatPermissions
 from bot.services.db_service import db_service
+
+logger = logging.getLogger(__name__)
 
 class ModerationFilterMiddleware(BaseMiddleware):
     async def __call__(
@@ -13,20 +16,29 @@ class ModerationFilterMiddleware(BaseMiddleware):
         event: Message,
         data: Dict[str, Any]
     ) -> Any:
-        if not isinstance(event, Message) or not event.from_user or event.from_user.is_bot:
+        if not isinstance(event, Message) or not event.chat:
             return await handler(event, data)
 
         chat_id = event.chat.id
+
+        # 1. Auto-register group chat in database as soon as any message arrives
+        if event.chat.type in ["group", "supergroup"]:
+            try:
+                await db_service.get_or_create_chat(
+                    chat_id=chat_id,
+                    title=event.chat.title or f"Группа ({chat_id})",
+                    username=event.chat.username,
+                    chat_type=event.chat.type
+                )
+            except Exception as e:
+                logger.error(f"Error auto-registering chat {chat_id}: {e}")
+
+        # Skip moderation checks if user is missing or is a bot
+        if not event.from_user or event.from_user.is_bot:
+            return await handler(event, data)
+
         user_id = event.from_user.id
         bot = data.get("bot")
-
-        # 1. Ensure chat & default settings are auto-registered in DB
-        await db_service.get_or_create_chat(
-            chat_id=chat_id,
-            title=event.chat.title or f"Группа ({chat_id})",
-            username=event.chat.username,
-            chat_type=event.chat.type
-        )
 
         # 2. Update or register user info in DB
         await db_service.upsert_user(
@@ -133,7 +145,6 @@ class ModerationFilterMiddleware(BaseMiddleware):
                 pass
 
             user_fullname = event.from_user.full_name
-            # Log violation audit
             await db_service.log_action(
                 chat_id=chat_id,
                 user_id=user_id,
@@ -142,7 +153,6 @@ class ModerationFilterMiddleware(BaseMiddleware):
                 reason=violation_reason
             )
 
-            # Issue Warn
             warn_count = await db_service.add_warn(
                 chat_id=chat_id,
                 user_id=user_id,
@@ -150,7 +160,6 @@ class ModerationFilterMiddleware(BaseMiddleware):
                 issuer="AutoModerator"
             )
 
-            # Check Warn Limit
             if warn_count >= settings.max_warns:
                 await db_service.clear_warns(chat_id, user_id)
                 punishment = settings.warns_punishment.lower()
@@ -196,7 +205,6 @@ class ModerationFilterMiddleware(BaseMiddleware):
                     f"Предупреждения: <b>{warn_count}/{settings.max_warns}</b>"
                 )
 
-            # Auto-delete notification message
             if 'msg' in locals() and settings.bot_auto_delete_seconds > 0:
                 import asyncio
                 async def delete_later(m, delay):
@@ -207,6 +215,6 @@ class ModerationFilterMiddleware(BaseMiddleware):
                         pass
                 asyncio.create_task(delete_later(msg, settings.bot_auto_delete_seconds))
 
-            return None  # Stop handler execution
+            return None
 
         return await handler(event, data)
