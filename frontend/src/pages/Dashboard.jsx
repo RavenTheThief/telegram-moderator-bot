@@ -6,7 +6,19 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, 
 import StatCard from '../components/StatCard';
 import { chatsAPI } from '../services/api';
 
-const COLORS = ['#3B82F6', '#EF4444', '#F59E0B', '#10B981', '#8B5CF6'];
+const COLORS = ['#3B82F6', '#EF4444', '#F59E0B', '#10B981', '#8B5CF6', '#EC4899', '#14B8A6'];
+
+const ACTION_TRANSLATIONS = {
+  delete_message: 'Удаление сообщений',
+  mute_user: 'Мут пользователей',
+  ban_user: 'Бан пользователей',
+  unwarn: 'Снятие предупреждений',
+  unmute: 'Снятие мута',
+  unban: 'Разбан пользователей',
+  captcha_passed: 'Успешная капча',
+  captcha_failed: 'Провал капчи',
+  warn: 'Выдача варна'
+};
 
 export default function Dashboard({ chats, onSelectChat, onNavigateToSettings }) {
   const [stats, setStats] = useState(null);
@@ -35,6 +47,11 @@ export default function Dashboard({ chats, onSelectChat, onNavigateToSettings })
       </div>
     );
   }
+
+  const formattedActionsChart = (stats?.actions_chart || []).map((item) => ({
+    ...item,
+    name: ACTION_TRANSLATIONS[item.name] || item.name,
+  }));
 
   return (
     <div className="space-y-8">
@@ -116,13 +133,13 @@ export default function Dashboard({ chats, onSelectChat, onNavigateToSettings })
           <p className="text-xs text-gray-400 mb-4">Типы примененных наказаний</p>
 
           <div className="h-64 flex items-center justify-center">
-            {stats?.actions_chart?.length === 0 ? (
+            {formattedActionsChart.length === 0 ? (
               <p className="text-xs text-gray-500">Нет данных для отображения</p>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={stats?.actions_chart || []}
+                    data={formattedActionsChart}
                     cx="50%"
                     cy="50%"
                     innerRadius={55}
@@ -130,7 +147,7 @@ export default function Dashboard({ chats, onSelectChat, onNavigateToSettings })
                     paddingAngle={4}
                     dataKey="value"
                   >
-                    {stats?.actions_chart?.map((entry, index) => (
+                    {formattedActionsChart.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
