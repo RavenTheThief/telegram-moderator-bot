@@ -12,12 +12,30 @@ from bot.services.redis_service import redis_service
 logger = logging.getLogger(__name__)
 router = Router(name="captcha_router")
 
+# Emoji Captcha Dataset
+EMOJI_DATASET = [
+    ("🍎", "Яблоко"),
+    ("🐶", "Собака"),
+    ("🚗", "Машина"),
+    ("⚽", "Мяч"),
+    ("⭐", "Звезда"),
+    ("🍕", "Пицца"),
+    ("🐱", "Кот"),
+    ("🎈", "Шарик"),
+    ("🚀", "Ракета"),
+    ("🎁", "Подарок")
+]
+
+# Simple Logical Questions Dataset
+QUESTIONS_DATASET = [
+    ("Сколько дней в одной неделе?", "7", ["5", "7", "10", "12"]),
+    ("Какого цвета зеленая трава?", "Зеленый", ["Синий", "Зеленый", "Желтый", "Красный"]),
+    ("Сколько лап у здоровой кошки?", "4", ["2", "4", "6", "8"]),
+    ("Что идет сразу после зимы?", "Весна", ["Осень", "Весна", "Лето", "Ночь"]),
+    ("Сколько пальцев на одной руке?", "5", ["3", "5", "8", "10"])
+]
+
 async def start_captcha_background_worker(bot: Bot):
-    """
-    Persistent Redis-backed Captcha Expiration Background Task.
-    Runs periodically every 10 seconds. Scans Redis for expired captcha timers.
-    Survives container restarts cleanly because state is persisted in Redis!
-    """
     logger.info("Starting Redis-backed Captcha Expiration Background Worker...")
     while True:
         try:
@@ -109,8 +127,9 @@ async def on_user_join(event: ChatMemberUpdated, bot: Bot):
 
     user_fullname = new_user.full_name
     timeout = settings.captcha_timeout
+    captcha_type = settings.captcha_type.lower()
 
-    if settings.captcha_type == "math":
+    if captcha_type == "math":
         a, b = random.randint(1, 10), random.randint(1, 10)
         correct_ans = a + b
         options = {correct_ans}
@@ -119,13 +138,7 @@ async def on_user_join(event: ChatMemberUpdated, bot: Bot):
         opts_list = list(options)
         random.shuffle(opts_list)
 
-        buttons = []
-        for opt in opts_list:
-            buttons.append(InlineKeyboardButton(
-                text=str(opt),
-                callback_data=f"captcha:{new_user.id}:{opt}"
-            ))
-
+        buttons = [InlineKeyboardButton(text=str(opt), callback_data=f"captcha:{new_user.id}:{opt}") for opt in opts_list]
         keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
         caption = (
             f"👋 <b>{user_fullname}</b>, добро пожаловать!\n"
@@ -133,8 +146,66 @@ async def on_user_join(event: ChatMemberUpdated, bot: Bot):
             f"У вас есть <b>{timeout} секунд</b>."
         )
         answer_key = str(correct_ans)
+
+    elif captcha_type == "math_advanced":
+        op = random.choice(["-", "*"])
+        if op == "-":
+            a = random.randint(10, 30)
+            b = random.randint(1, a)
+            correct_ans = a - b
+        else:
+            a = random.randint(2, 6)
+            b = random.randint(2, 6)
+            correct_ans = a * b
+
+        options = {correct_ans}
+        while len(options) < 4:
+            options.add(random.randint(0, 36))
+        opts_list = list(options)
+        random.shuffle(opts_list)
+
+        buttons = [InlineKeyboardButton(text=str(opt), callback_data=f"captcha:{new_user.id}:{opt}") for opt in opts_list]
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
+        caption = (
+            f"👋 <b>{user_fullname}</b>, добро пожаловать!\n"
+            f"Для входа в чат решите пример: <b>{a} {op} {b} = ?</b>\n"
+            f"У вас есть <b>{timeout} секунд</b>."
+        )
+        answer_key = str(correct_ans)
+
+    elif captcha_type == "emoji":
+        target = random.choice(EMOJI_DATASET)
+        correct_emoji, target_name = target
+        distractors = [e for e in EMOJI_DATASET if e[0] != correct_emoji]
+        chosen_distractors = random.sample(distractors, 3)
+        all_options = [target] + chosen_distractors
+        random.shuffle(all_options)
+
+        buttons = [InlineKeyboardButton(text=opt[0], callback_data=f"captcha:{new_user.id}:{opt[0]}") for opt in all_options]
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[buttons])
+        caption = (
+            f"👋 <b>{user_fullname}</b>, добро пожаловать!\n"
+            f"Для входа в чат найдите и нажмите на: <b>{target_name} ({correct_emoji})</b>\n"
+            f"У вас есть <b>{timeout} секунд</b>."
+        )
+        answer_key = correct_emoji
+
+    elif captcha_type == "question":
+        q_text, correct_ans, options_list = random.choice(QUESTIONS_DATASET)
+        opts_copy = list(options_list)
+        random.shuffle(opts_copy)
+
+        buttons = [InlineKeyboardButton(text=opt, callback_data=f"captcha:{new_user.id}:{opt}") for opt in opts_copy]
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[b] for b in buttons])
+        caption = (
+            f"👋 <b>{user_fullname}</b>, добро пожаловать!\n"
+            f"Ответьте на вопрос: <b>{q_text}</b>\n"
+            f"У вас есть <b>{timeout} секунд</b>."
+        )
+        answer_key = correct_ans
+
     else:
-        # Button Captcha
+        # Default Button Captcha
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="🟢 Я не робот (Нажмите)", callback_data=f"captcha:{new_user.id}:ok")
         ]])
@@ -147,7 +218,6 @@ async def on_user_join(event: ChatMemberUpdated, bot: Bot):
 
     captcha_msg = await bot.send_message(chat_id, caption, reply_markup=keyboard)
 
-    # Store state and expiration in Redis
     await redis_service.set_captcha(
         chat_id=chat_id,
         user_id=new_user.id,

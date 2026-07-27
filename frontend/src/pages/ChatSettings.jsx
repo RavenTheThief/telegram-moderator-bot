@@ -174,7 +174,10 @@ export default function ChatSettings({ chatId, chatTitle }) {
                 className="w-full bg-dark-700 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
               >
                 <option value="button">Кнопка "Я не робот"</option>
-                <option value="math">Математическая задача (Пример 4+3=?)</option>
+                <option value="math">Простой пример (Сложение: 4 + 3 = ?)</option>
+                <option value="math_advanced">Сложный пример (Вычитание / Умножение)</option>
+                <option value="emoji">Эмодзи-капча (Найди иконку 🍎)</option>
+                <option value="question">Вопрос на логику (Сколько лап у кошки?)</option>
               </select>
             </div>
 
