@@ -3,11 +3,31 @@ import logging
 import urllib.parse
 from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable, Dict
-from aiogram import BaseMiddleware
+from aiogram import BaseMiddleware, Bot
 from aiogram.types import Message, ChatPermissions
 from bot.services.db_service import db_service
 
 logger = logging.getLogger(__name__)
+
+async def is_admin_or_creator(bot: Bot, chat_id: int, user_id: int, sender_chat=None) -> bool:
+    """
+    Check if the user is an administrator or creator of the chat,
+    or posting anonymously on behalf of the group itself.
+    """
+    # 1. Anonymous admin in Telegram supergroup
+    if user_id == 1087968824 or (sender_chat and sender_chat.id == chat_id):
+        return True
+
+    # 2. Check chat member status via Telegram Bot API
+    if bot:
+        try:
+            member = await bot.get_chat_member(chat_id, user_id)
+            if member.status in ["administrator", "creator"]:
+                return True
+        except Exception as e:
+            logger.warning(f"Failed to check admin status for user {user_id} in chat {chat_id}: {e}")
+
+    return False
 
 class ModerationFilterMiddleware(BaseMiddleware):
     async def __call__(
@@ -50,15 +70,10 @@ class ModerationFilterMiddleware(BaseMiddleware):
             is_bot=event.from_user.is_bot
         )
 
-        # Skip moderation checks for chat administrators & group creators
-        if bot:
-            try:
-                member = await bot.get_chat_member(chat_id, user_id)
-                if member.status in ["administrator", "creator"]:
-                    logger.info(f"User {user_id} ({event.from_user.full_name}) is admin/creator in chat {chat_id}. Bypassing moderation filters.")
-                    return await handler(event, data)
-            except Exception as e:
-                logger.warning(f"Failed to check admin status for user {user_id}: {e}")
+        # STRICT ADMIN BYPASS: Completely skip ALL moderation checks & punishments for administrators & creators
+        if await is_admin_or_creator(bot, chat_id, user_id, event.sender_chat):
+            logger.info(f"User {user_id} ({event.from_user.full_name}) is admin/creator in chat {chat_id}. Bypassing ALL moderation filters & punishments.")
+            return await handler(event, data)
 
         settings = await db_service.get_chat_settings(chat_id)
         if not settings:
@@ -67,7 +82,7 @@ class ModerationFilterMiddleware(BaseMiddleware):
         text = event.text or event.caption or ""
         violation_reason = None
 
-        # 1. Anti-Channel Filter (messages sent on behalf of a Telegram channel)
+        # 1. Anti-Channel Filter (messages sent on behalf of external Telegram channels)
         if not violation_reason and settings.filter_anti_channel and event.sender_chat and event.sender_chat.id != chat_id:
             violation_reason = "Отправка сообщения от имени канала"
 

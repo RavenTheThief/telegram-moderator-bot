@@ -4,6 +4,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import Message, ChatPermissions
 from bot.services.redis_service import redis_service
 from bot.services.db_service import db_service
+from bot.middlewares.moderation_filter import is_admin_or_creator
 
 class AntiFloodMiddleware(BaseMiddleware):
     async def __call__(
@@ -17,16 +18,11 @@ class AntiFloodMiddleware(BaseMiddleware):
 
         chat_id = event.chat.id
         user_id = event.from_user.id
-
-        # Skip checks for chat admins
         bot = data.get("bot")
-        if bot:
-            try:
-                member = await bot.get_chat_member(chat_id, user_id)
-                if member.status in ["administrator", "creator"]:
-                    return await handler(event, data)
-            except Exception:
-                pass
+
+        # Skip anti-flood checks for chat admins & creators
+        if await is_admin_or_creator(bot, chat_id, user_id, event.sender_chat):
+            return await handler(event, data)
 
         settings = await db_service.get_chat_settings(chat_id)
         if not settings or not settings.anti_flood_enabled:
