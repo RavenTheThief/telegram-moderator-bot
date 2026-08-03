@@ -13,12 +13,12 @@ class AntiFloodMiddleware(BaseMiddleware):
         event: Message,
         data: Dict[str, Any]
     ) -> Any:
-        if not isinstance(event, Message) or not event.from_user or event.from_user.is_bot:
+        if not isinstance(event, Message) or not event.from_user or event.from_user.is_bot or not event.chat:
             return await handler(event, data)
 
         chat_id = event.chat.id
         user_id = event.from_user.id
-        bot = data.get("bot")
+        bot = data.get("bot") or getattr(event, "bot", None)
 
         # Skip anti-flood checks for chat admins & creators
         if await is_admin_or_creator(bot, chat_id, user_id, event.sender_chat):

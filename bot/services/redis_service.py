@@ -38,6 +38,29 @@ class RedisService:
         count = results[2]
         return count > max_msgs
 
+    # Admin Status Caching (prevents Telegram API rate limits & guarantees admin bypass)
+    async def get_cached_admin(self, chat_id: int, user_id: int) -> Optional[bool]:
+        if not self.redis:
+            await self.connect()
+        try:
+            val = await self.redis.get(f"admin:{chat_id}:{user_id}")
+            if val == "1":
+                return True
+            elif val == "0":
+                return False
+        except Exception as e:
+            logger.error(f"Error reading admin cache for {user_id} in {chat_id}: {e}")
+        return None
+
+    async def set_cached_admin(self, chat_id: int, user_id: int, is_admin: bool, ttl: int = 300):
+        if not self.redis:
+            await self.connect()
+        try:
+            val = "1" if is_admin else "0"
+            await self.redis.set(f"admin:{chat_id}:{user_id}", val, ex=ttl)
+        except Exception as e:
+            logger.error(f"Error setting admin cache for {user_id} in {chat_id}: {e}")
+
     # Captcha state store with Expiration tracking
     async def set_captcha(
         self,

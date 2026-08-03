@@ -6,24 +6,39 @@ from typing import Any, Awaitable, Callable, Dict
 from aiogram import BaseMiddleware, Bot
 from aiogram.types import Message, ChatPermissions
 from bot.services.db_service import db_service
+from bot.services.redis_service import redis_service
 
 logger = logging.getLogger(__name__)
 
 async def is_admin_or_creator(bot: Bot, chat_id: int, user_id: int, sender_chat=None) -> bool:
     """
     Check if the user is an administrator or creator of the chat,
-    or posting anonymously on behalf of the group itself.
+    or posting anonymously on behalf of the group itself/linked channel.
     """
-    # 1. Anonymous admin in Telegram supergroup
-    if user_id == 1087968824 or (sender_chat and sender_chat.id == chat_id):
+    # 1. Anonymous admin in Telegram supergroup or channel post
+    if user_id in [1087968824, 777000] or sender_chat is not None:
         return True
 
-    # 2. Check chat member status via Telegram Bot API
+    # 2. Check Redis cache first
+    try:
+        cached_admin = await redis_service.get_cached_admin(chat_id, user_id)
+        if cached_admin is True:
+            return True
+        elif cached_admin is False:
+            return False
+    except Exception as e:
+        logger.warning(f"Error checking cached admin status: {e}")
+
+    # 3. Check chat member status via Telegram Bot API
     if bot:
         try:
             member = await bot.get_chat_member(chat_id, user_id)
             if member.status in ["administrator", "creator"]:
+                await redis_service.set_cached_admin(chat_id, user_id, is_admin=True, ttl=300)
                 return True
+            else:
+                await redis_service.set_cached_admin(chat_id, user_id, is_admin=False, ttl=60)
+                return False
         except Exception as e:
             logger.warning(f"Failed to check admin status for user {user_id} in chat {chat_id}: {e}")
 
@@ -58,7 +73,7 @@ class ModerationFilterMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         user_id = event.from_user.id
-        bot = data.get("bot")
+        bot = data.get("bot") or getattr(event, "bot", None)
 
         # 2. Update or register user info in DB
         await db_service.upsert_user(
