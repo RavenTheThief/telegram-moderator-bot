@@ -11,7 +11,7 @@ from backend.core.security import get_current_user
 from backend.models.models import User, Warn, AuditLog
 from backend.schemas.schemas import UserResponse
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8797571672:AAGQ2u_C-PWImETr_3YuB5ft0FUkZL3-M9g")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
 router = APIRouter(prefix="/api/chats/{chat_id}/users", tags=["Users Management"])
@@ -23,62 +23,55 @@ async def get_chat_users(
     username: str = Depends(get_current_user)
 ):
     result = await db.execute(
-        select(User)
-        .options(selectinload(User.warns))
-        .where(User.chat_id == chat_id)
-        .order_by(User.joined_at.desc())
+        select(User).options(selectinload(User.warns)).where(User.chat_id == chat_id)
     )
     users = result.scalars().all()
-    
-    response = []
+
+    # Populate warns count
+    response_users = []
     for u in users:
         u_dict = UserResponse.model_validate(u)
         u_dict.warns_count = len(u.warns)
-        response.append(u_dict)
-        
-    return response
+        response_users.append(u_dict)
+
+    return response_users
 
 @router.post("/{user_id}/unwarn")
 async def unwarn_user(
     chat_id: int,
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    username: str = Depends(get_current_user)
+    admin_username: str = Depends(get_current_user)
 ):
-    # Delete all warns for this user in chat
+    # Remove all active warns for this user in chat
     await db.execute(
         delete(Warn).where(Warn.chat_id == chat_id, Warn.user_id == user_id)
     )
     
-    # Audit log
-    audit = AuditLog(
-        chat_id=chat_id,
-        user_id=user_id,
-        action="unwarn",
-        reason="Снятие предупреждений через Веб-панель",
-        details=f"Выполнено администратором {username}"
-    )
-    db.add(audit)
+    # Reset restriction flag if user is not banned
+    res = await db.execute(select(User).where(User.chat_id == chat_id, User.id == user_id))
+    user = res.scalar_one_or_none()
+    if user:
+        user_fullname = f"{user.first_name} {user.last_name or ''}".strip()
+        await db.log_action(
+            chat_id=chat_id,
+            user_id=user_id,
+            user_fullname=user_fullname,
+            action="unwarn_user",
+            reason=f"Варны полностью сброшены администратором ({admin_username})"
+        )
+
     await db.commit()
-    return {"status": "success", "message": "Варны сброшены"}
+    return {"status": "success", "message": "Варны пользователя успешно сброшены"}
 
 @router.post("/{user_id}/unmute")
 async def unmute_user(
     chat_id: int,
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    username: str = Depends(get_current_user)
+    admin_username: str = Depends(get_current_user)
 ):
-    # Update DB user state
-    result = await db.execute(
-        select(User).where(User.chat_id == chat_id, User.id == user_id)
-    )
-    user = result.scalar_one_or_none()
-    if user:
-        user.is_restricted = False
-        user.restricted_until = None
-    
-    # Call Telegram API to lift restrictions
+    # Call Telegram Bot API unrestrictChatMember
     async with httpx.AsyncClient() as client:
         try:
             res = await client.post(
@@ -88,50 +81,45 @@ async def unmute_user(
                     "user_id": user_id,
                     "permissions": {
                         "can_send_messages": True,
-                        "can_send_audios": True,
-                        "can_send_documents": True,
-                        "can_send_photos": True,
-                        "can_send_videos": True,
-                        "can_send_video_notes": True,
-                        "can_send_voice_notes": True,
-                        "can_send_polls": True,
+                        "can_send_media_messages": True,
                         "can_send_other_messages": True,
-                        "can_add_web_page_previews": True,
-                        "can_change_info": False,
-                        "can_invite_users": True,
-                        "can_pin_messages": False,
+                        "can_add_web_page_previews": True
                     }
-                }
+                },
+                timeout=5.0
             )
         except Exception as e:
-            pass
+            raise HTTPException(status_code=500, detail=f"Ошибка соединения с Telegram API: {e}")
 
-    audit = AuditLog(
-        chat_id=chat_id,
-        user_id=user_id,
-        user_fullname=user.first_name if user else None,
-        action="unmute",
-        reason="Снятие мута через Веб-панель",
-        details=f"Выполнено администратором {username}"
-    )
-    db.add(audit)
+    # Update DB status
+    res = await db.execute(select(User).where(User.chat_id == chat_id, User.id == user_id))
+    user = res.scalar_one_or_none()
+    if user:
+        user.is_restricted = False
+        user.restricted_until = None
+        user_fullname = f"{user.first_name} {user.last_name or ''}".strip()
+        
+        # Log Action
+        log = AuditLog(
+            chat_id=chat_id,
+            user_id=user_id,
+            user_fullname=user_fullname,
+            action="unmute_user",
+            reason=f"Мут снят администратором ({admin_username})"
+        )
+        db.add(log)
+
     await db.commit()
-    return {"status": "success", "message": "Мут снят"}
+    return {"status": "success", "message": "Мут с пользователя успешно снят в Telegram"}
 
 @router.post("/{user_id}/unban")
 async def unban_user(
     chat_id: int,
     user_id: int,
     db: AsyncSession = Depends(get_db),
-    username: str = Depends(get_current_user)
+    admin_username: str = Depends(get_current_user)
 ):
-    result = await db.execute(
-        select(User).where(User.chat_id == chat_id, User.id == user_id)
-    )
-    user = result.scalar_one_or_none()
-    if user:
-        user.is_banned = False
-
+    # Call Telegram Bot API unbanChatMember
     async with httpx.AsyncClient() as client:
         try:
             res = await client.post(
@@ -140,19 +128,28 @@ async def unban_user(
                     "chat_id": chat_id,
                     "user_id": user_id,
                     "only_if_banned": True
-                }
+                },
+                timeout=5.0
             )
         except Exception as e:
-            pass
+            raise HTTPException(status_code=500, detail=f"Ошибка соединения с Telegram API: {e}")
 
-    audit = AuditLog(
-        chat_id=chat_id,
-        user_id=user_id,
-        user_fullname=user.first_name if user else None,
-        action="unban",
-        reason="Разбан через Веб-панель",
-        details=f"Выполнено администратором {username}"
-    )
-    db.add(audit)
+    # Update DB status
+    res = await db.execute(select(User).where(User.chat_id == chat_id, User.id == user_id))
+    user = res.scalar_one_or_none()
+    if user:
+        user.is_banned = False
+        user_fullname = f"{user.first_name} {user.last_name or ''}".strip()
+        
+        # Log Action
+        log = AuditLog(
+            chat_id=chat_id,
+            user_id=user_id,
+            user_fullname=user_fullname,
+            action="unban_user",
+            reason=f"Бан снят администратором ({admin_username})"
+        )
+        db.add(log)
+
     await db.commit()
-    return {"status": "success", "message": "Пользователь разбанен"}
+    return {"status": "success", "message": "Пользователь разбанен в Telegram"}

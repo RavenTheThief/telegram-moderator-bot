@@ -15,12 +15,12 @@
 
 ---
 
-## 🔑 Учетные данные по умолчанию
+## 🔑 Конфигурация и переменные окружения
 
-* **Web Panel URL:** [http://localhost:3000](http://localhost:3000)
-* **Логин администратора:** `RavenThief`
-* **Пароль администратора:** `gfgfxrf12`
-* **Backend API URL:** [http://localhost:8000](http://localhost:8000) (Swagger Docs: `/docs`)
+Все чувствительные учетные данные настраиваются через файл `.env` на сервере:
+
+* **Web Panel URL:** `http://localhost:8081` (или ваш домен)
+* **Backend API URL:** `http://localhost:8000` (Swagger Docs: `/docs`)
 
 ---
 
@@ -33,13 +33,19 @@ cd telegram-moderator-bot
 ```
 
 ### 2. Настройка переменных окружения
-Файл `.env` уже создан в корне проекта с рабочим токеном бота. При необходимости настройте свои параметры:
+Скопируйте пример конфигурационного файла `.env.example` в `.env`:
+
+```bash
+cp .env.example .env
+```
+
+Укажите ваши значения в файле `.env`:
 
 ```env
-BOT_TOKEN=8797571672:AAGQ2u_C-PWImETr_3YuB5ft0FUkZL3-M9g
-ADMIN_LOGIN=RavenThief
-ADMIN_PASSWORD=gfgfxrf12
-JWT_SECRET_KEY=super_secret_jwt_key_change_me_in_production_123456
+BOT_TOKEN=your_bot_token_here
+SUPER_ADMIN_USERNAME=admin
+SUPER_ADMIN_PASSWORD=your_secure_password
+JWT_SECRET_KEY=super_secret_jwt_key_change_me_in_production
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres_password
 POSTGRES_DB=moderator_db
@@ -77,7 +83,7 @@ docker-compose down
 1. **Строгий запрет работы в ЛС (DM Restriction):**
    * Middleware `ChatTypeMiddleware` мгновенно блокирует все входящие приватные сообщения. Бот работает исключительно внутри Групп и Супергрупп Telegram.
 2. **Система Капчи при входе:**
-   * Математический пример (например, `4 + 3 = ?`) или кнопка *"🟢 Я не робот"*.
+   * 10 различных вариантов проверки участников (Математический пример, Кнопка, По логике, По категории, Текстовый вопрос и др.).
    * Настраиваемый таймаут (от 30 до 300 секунд).
    * Авто-кик или бан при провале/таймауте капчи.
    * Настраиваемое приветствие и правила после успешного прохождения.
@@ -120,6 +126,8 @@ docker-compose down
    ```bash
    git clone https://github.com/your-username/telegram-moderator-bot.git
    cd telegram-moderator-bot
+   cp .env.example .env
+   # Отредактируйте .env на сервере
+   nano .env
    docker-compose up -d --build
    ```
-4. Настройте Nginx или Caddy с SSL сертификтом (Let's Encrypt) для домена панели.

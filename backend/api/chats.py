@@ -24,7 +24,10 @@ async def get_chats(
     username: str = Depends(get_current_user)
 ):
     result = await db.execute(
-        select(Chat).options(selectinload(Chat.settings)).order_by(desc(Chat.updated_at))
+        select(Chat)
+        .options(selectinload(Chat.settings))
+        .where(Chat.type.in_(["group", "supergroup"]))
+        .order_by(desc(Chat.updated_at))
     )
     chats = result.scalars().all()
     return chats
@@ -35,7 +38,7 @@ async def get_dashboard_stats(
     username: str = Depends(get_current_user)
 ):
     # Total active chats
-    chats_count = (await db.execute(select(func.count(Chat.id)).where(Chat.is_active == True))).scalar() or 0
+    chats_count = (await db.execute(select(func.count(Chat.id)).where(Chat.is_active == True, Chat.type.in_(["group", "supergroup"])))).scalar() or 0
     # Total users
     users_count = (await db.execute(select(func.count(User.id)))).scalar() or 0
     # Total banned users
@@ -94,7 +97,7 @@ async def get_chat_by_id(
     username: str = Depends(get_current_user)
 ):
     result = await db.execute(
-        select(Chat).options(selectinload(Chat.settings)).where(Chat.id == chat_id)
+        select(Chat).options(selectinload(Chat.settings)).where(Chat.id == chat_id, Chat.type.in_(["group", "supergroup"]))
     )
     chat = result.scalar_one_or_none()
     if not chat:
@@ -115,7 +118,7 @@ async def delete_chat(
         raise HTTPException(status_code=404, detail="Чат не найден")
 
     # Call Telegram API leaveChat to make the bot exit the Telegram group
-    BOT_TOKEN = os.getenv("BOT_TOKEN", "8797571672:AAGQ2u_C-PWImETr_3YuB5ft0FUkZL3-M9g")
+    BOT_TOKEN = os.getenv("BOT_TOKEN", "")
     async with httpx.AsyncClient() as client:
         try:
             res = await client.post(

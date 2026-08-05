@@ -3,8 +3,8 @@ import { ShieldCheck, Lock, User, AlertCircle, ArrowRight } from 'lucide-react';
 import { authAPI } from '../services/api';
 
 export default function Login({ onLoginSuccess }) {
-  const [username, setUsername] = useState('RavenThief');
-  const [password, setPassword] = useState('gfgfxrf12');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -59,7 +59,7 @@ export default function Login({ onLoginSuccess }) {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="RavenThief"
+                placeholder="Введите логин..."
                 className="w-full bg-dark-700/80 border border-gray-700 text-white rounded-xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:border-blue-500 transition-colors"
               />
             </div>
